@@ -1,0 +1,116 @@
+-- Task 1. Create a pandemic schema in the database
+CREATE SCHEMA IF NOT EXISTS pandemic;
+USE pandemic;
+
+------------------------------------------------------
+– Task 2. Normalize the infectious causes table. Save two tables with normalized data in the same schema
+
+USE pandemic;
+
+CREATE TABLE countries(
+id INT PRIMARY KEY AUTO_INCREMENT,
+code VARCHAR(8) UNIQUE,
+country VARCHAR(32) NOT NULL UNIQUE
+);
+
+INSERT INTO countries (code, country)
+SELECT DISTINCT code, entity FROM infectious_cases;
+
+CREATE TABLE infectious_cases_normalized 
+AS SELECT * FROM infectious_cases;
+
+ALTER TABLE infectious_cases_normalized
+ADD id INT PRIMARY KEY AUTO_INCREMENT FIRST,
+ADD country_id INT AFTER id,
+ADD CONSTRAINT fk_country_id FOREIGN KEY (country_id) REFERENCES countries(id);
+
+UPDATE infectious_cases_normalized i, countries c  
+SET i.country_id = c.id WHERE c.code = i.code;
+
+ALTER TABLE infectious_cases_normalized
+DROP COLUMN entity,
+DROP COLUMN code;
+
+SELECT COUNT(*) FROM infectious_cases;
+
+----------------------------------------------------
+
+– Task 3. For each unique combination of Entity and Code or their id, calculate the average, minimum, maximum value and sum for the Number_rabies attribute
+
+USE pandemic;
+SELECT
+    Code AS entity_ID,
+    AVG(CAST(Number_rabies AS FLOAT)) AS avgCases_rabies,
+    MIN(CAST(Number_rabies AS FLOAT)) AS minCases_rabies,
+    MAX(CAST(Number_rabies AS FLOAT)) AS maxCases_rabies,
+    SUM(CAST(Number_rabies AS FLOAT)) AS sumCases_rabies
+FROM (
+    SELECT *
+    FROM infectious_cases
+    WHERE Number_rabies IS NOT NULL 
+      AND Number_rabies <> '' 
+      AND Number_rabies != 'NULL'
+    ) AS filtered_data
+GROUP BY Code
+ORDER BY avgCases_rabies DESC
+LIMIT 10;
+
+
+-------------------------------------------------------
+Task 4: For the original or normalized table for the Year column, build using built-in SQL functions
+USE pandemic;
+
+SELECT
+    Entity AS entity_ID,
+    MAKEDATE(Year, 1) AS Date_case,
+    TIMESTAMPDIFF(YEAR, MAKEDATE(Year, 1), CURDATE()) AS Years_from_now,
+    SUM(CAST(Number_rabies AS DECIMAL(7,2))) AS Rabies_case_per_year
+FROM infectious_cases
+WHERE Number_rabies IS NOT NULL AND Number_rabies <> '' AND Number_rabies != 'NULL'
+GROUP BY Entity, Year
+ORDER BY Entity, Year;
+
+------------------------------------------------------------------
+– Task 5: Create and use a function that constructs the same attribute as in the previous task: the function should take as input a year value and return the difference in years between the current date and the date created from the year attribute (year 1996 → ‘1996-01-01 ‘)
+
+SELECT * FROM infectious_cases_normalized;
+
+--------------------------------------------------------------
+
+DROP FUNCTION IF EXISTS fn_subtract_now_year;
+
+DELIMITER //
+
+CREATE FUNCTION fn_subtract_now_year(year INT)
+RETURNS INT
+DETERMINISTIC 
+NO SQL
+BEGIN
+    DECLARE result INT;
+    SET result = YEAR(CURDATE()) - year;
+    RETURN result;
+END //
+
+DELIMITER ;
+
+SELECT fn_subtract_now_year(1984);
+
+-------------------------------------------- ------------------------------------------------
+
+DROP FUNCTION IF EXISTS fn_calc_illnesses_per_period;
+
+DELIMITER //
+
+CREATE FUNCTION fn_calc_illnesses_per_period(num_illnesses_per_year DOUBLE, period INT)
+RETURNS DOUBLE
+DETERMINISTIC 
+NO SQL
+BEGIN
+    DECLARE result DOUBLE;
+    SET result = num_illnesses_per_year / period;
+    RETURN result;
+END //
+
+DELIMITER ;
+
+SELECT fn_calc_illnesses_per_period(20000, 4);
